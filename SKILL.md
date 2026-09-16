@@ -70,6 +70,7 @@ python3 scripts/build_annual_workbook.py --store golf|towel \
     --template "<模板xlsx路径>" --out-dir "<输出目录>" [--data-dir <数据目录>]
 ```
 脚本自动扫描 `data/<store>/` 下该年全部月份数据，从模板重建年度工作簿：有数据月份填数+插图，无数据月份为空白模板表；月份 sheet 命名 `YYYY-MM`，统计月份 G2 自动设置。
+**总结行公式自动预填**：每个月份 sheet（含无数据空白月）的总结行会自动写入联动公式——日销量=每列 `=SUM(该列数据行)`、周销量=每 5 天一组 `=SUM`（1-5/6-10/11-15/16-20/21-25/26-30/31）、周平均=每 8 天一组 `=IFERROR(AVERAGE(...),"")`、月总销量=`=SUM(L:AP)`，随数据自动重算；无数据组显示空白（`IFERROR` 兜底）。
 
 ### 7. 校验与交付
 
@@ -82,7 +83,7 @@ python3 scripts/build_annual_workbook.py --store golf|towel \
 | 脚本 | 用途 |
 |---|---|
 | `scripts/build_temu_xlsx.py` | raw JSON → 分SKU销量降序汇总表（`--metric d7|d30` 选近7天/近30天，默认近30天） |
-| `scripts/build_annual_workbook.py` | raw+daily+imgs → 年度每日销量台账（月份工作表，自动插图） |
+| `scripts/build_annual_workbook.py` | raw+daily+imgs → 年度每日销量台账（月份工作表，自动插图 + 总结行公式预填） |
 | `scripts/download_images.py` | SKC 图片 URL JSON → 高清图批量下载 |
 | `scripts/inject.js` | 浏览器注入函数库（页面提取/翻页/趋势/逐日/图片） |
 

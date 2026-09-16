@@ -77,7 +77,8 @@ def build(store_key, year, template, out_dir, data_dir):
         ws.title = "%d-%02d" % (year, m)
         ws.cell(row=2, column=7).value = excel_serial_1st(year, m)  # G2 统计月份
         if m not in data:
-            print("  空白表: %s" % ws.title)
+            fill_summary_formulas(ws, 5, 324)  # 空白月也预填总结行公式（模板原位 325-328）
+            print("  空白表(预填公式): %s" % ws.title)
             continue
         raw, daily_map = data[m]
         pos = [r for r in raw if any((s.get('d30') or 0) > 0 for s in r.get('skus', []))]
@@ -95,6 +96,29 @@ def build(store_key, year, template, out_dir, data_dir):
     wb.save(out_path)
     print("已保存:", out_path)
     return out_path
+
+def fill_summary_formulas(ws, first_row, last_row):
+    """在月份 sheet 的总结行批量写入公式（日销量/周销量/周平均/月总销量）。
+
+    数据月调用：总结行已被平移至 last_row+1 起；空白月调用：总结行在模板原位（325-328）。
+    公式口径（随数据联动）：
+      - 日销量行：每天一列 =SUM(该列数据行)
+      - 周销量行：每 5 天一组 =SUM（1-5、6-10、11-15、16-20、21-25、26-30、31）
+      - 周平均行：每 8 天一组 =IFERROR(AVERAGE(...),"")（无数据组显示空白）
+      - 月总销量行：=SUM(L:AP)（含 31 日）
+    """
+    from openpyxl.utils import get_column_letter
+    sr = last_row + 1  # 日销量行
+    for day in range(1, 32):
+        c = get_column_letter(11 + day)
+        ws.cell(row=sr, column=11 + day).value = "=SUM(%s%d:%s%d)" % (c, first_row, c, last_row)
+    for a, b in [(1, 5), (6, 10), (11, 15), (16, 20), (21, 25), (26, 30), (31, 31)]:
+        ca, cb = get_column_letter(11 + a), get_column_letter(11 + b)
+        ws.cell(row=sr + 1, column=11 + a).value = "=SUM(%s%d:%s%d)" % (ca, first_row, cb, last_row)
+    for a, b in [(1, 8), (9, 16), (17, 24), (25, 32), (33, 36)]:
+        ca, cb = get_column_letter(11 + a), get_column_letter(11 + b)
+        ws.cell(row=sr + 2, column=11 + a).value = '=IFERROR(AVERAGE(%s%d:%s%d),"")' % (ca, first_row, cb, last_row)
+    ws.cell(row=sr + 3, column=12).value = "=SUM(L%d:AP%d)" % (first_row, last_row)
 
 def fill_month_sheet(ws, pos, daily_map, year, month, store_key, store_dir):
     """填一个月份 sheet：数据行 / 删多余行 / SKC+商品名 / 行高 / 产品图"""
@@ -137,6 +161,12 @@ def fill_month_sheet(ws, pos, daily_map, year, month, store_key, store_dir):
             ws.cell(row=row, column=4).value = "SKC: %s\n%s" % (skc_id, name)
             ws.cell(row=row, column=4).alignment = Alignment(wrap_text=True, vertical='center', horizontal='left')
             ws.cell(row=row, column=9).value = s['className']
+            if s.get('spec'):
+                ws.cell(row=row, column=7).value = s['spec']   # G 规格型号
+            if s.get('unit'):
+                ws.cell(row=row, column=8).value = s['unit']   # H 单位
+            if s.get('price') is not None:
+                ws.cell(row=row, column=10).value = s['price'] # J 单价
             ws.cell(row=row, column=11).value = "=SUM(L{r}:AP{r})*J{r}".format(r=row)
             row += 1
         last_row = row - 1
@@ -172,11 +202,14 @@ def fill_month_sheet(ws, pos, daily_map, year, month, store_key, store_dir):
     for r in range(5, last_data_row + 1):
         ws.row_dimensions[r].height = 64
 
+    # 总结行公式（模板 325-328 已被平移至 last_data_row+1 ~ +4）
+    fill_summary_formulas(ws, 5, last_data_row)
+
     # 产品图（当月有销量的 SKC 顺序插入 B:C）
     order = [str(r['skcId']) for r in pos]
     groups = []
     for rng in ws.merged_cells.ranges:
-        if rng.min_col == 2 and rng.max_col == 3 and 5 <= rng.min_row <= 71:
+        if rng.min_col == 2 and rng.max_col == 3 and 5 <= rng.min_row <= 324:
             groups.append((rng.min_row, rng.max_row))
     groups.sort()
     if len(groups) != len(order):
