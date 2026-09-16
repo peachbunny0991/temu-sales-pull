@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# 数据与缓存（不纳入版本控制）
+data/
+.preview/
+*.log
+
+# macOS
+.DS_Store
