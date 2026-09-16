@@ -21,7 +21,7 @@ temu-sales-pull/
 ├── scripts/
 │   ├── inject.js                 # 浏览器注入函数库（列表/翻页/逐日/图片提取）
 │   ├── build_temu_xlsx.py        # raw JSON → 分SKU近30天销量降序汇总表
-│   ├── build_annual_workbook.py  # 月度数据 → 年度每日销量台账（自动插图）
+│   ├── build_annual_workbook.py  # 月度数据 → 年度每日销量台账（自动插图 + 总结行公式）
 │   └── download_images.py        # SKC 产品主图批量下载（高清化）
 └── references/
     ├── extraction-logic.md       # 提取逻辑详解（DOM/fiber、数据 schema）
@@ -36,39 +36,76 @@ temu-sales-pull/
 
 ## 使用方法
 
-### 豆包工作（Doubao Work，当前支持）
+### 方式一：作为 Agent Skill 使用（推荐，全自动）
 
-安装 `SKILL.md` 到用户的 `.user_skills` 目录后，直接说：
+把本目录安装为 Agent Skill 后（豆包工作：放入 `.user_skills/`），直接对助手说：
 
-> 拉取销量数据 / 更新销量表
+> 拉取销量数据 / 更新销量表 / 拉Temu销量 / Temu每日销量
 
-默认拉取 Golf Sports Factory Shop；切换 Towel Manufacturer 时说明即可。流程中仅在以下情况需要人工配合：
+助手会自动执行完整流程：浏览器提取列表 → 逐日销量 → 产品主图 → 生成两份 Excel。你只需在两种情况人工配合：
 
 1. 登录过期时接管浏览器完成登录
-2. 页面无店铺切换下拉时，手动切换店铺
+2. 页面无店铺切换下拉时，手动切换到目标店铺
 
-### 数据目录约定
+**触发前后需要你确认的设置**：
 
-```
-data/<store>/
-├── raw_<YYYYMM>.json      # 列表汇总（SKC/SKU + 四个销量指标）
-├── daily_<YYYYMM>.json    # 逐日销量 {skcId: [{date, prodSkuId, salesNumber}]}
-└── imgs/<store>_<skcId>.jpg  # 产品主图
-```
+| 设置 | 默认值 | 说明 |
+|---|---|---|
+| 店铺 | `golf`（Golf Sports Factory Shop） | 切 Towel Manufacturer 时说明即可 |
+| 销量指标 | 近30天（`d30`） | 需要近7天时说明，自动切换并生成 `分SKU近7天销量降序` 表 |
+| 输出目录 | 必须指定（`TEMU_OUT_DIR` 或 `--out-dir`） | 例：`/Users/<你>/Desktop/临时/2026销量表` |
+| 数据目录 | Skill 上级 `data/` | 例：`--data-dir /Users/<你>/path/to/data` |
+| 模板 | 必须指定（`TEMU_TPL` 或 `--template`） | `2026每日销量模板（空白）.xlsx` |
 
-### 生成报表（可独立运行，无需浏览器）
+### 方式二：脚本独立运行（无需浏览器，用已有数据生成报表）
+
+**0. 准备环境**
 
 ```bash
-# 汇总表（分SKU明细 + SKC汇总）
-python3 scripts/build_temu_xlsx.py data/golf/raw_202609.json "Golf Sports Factory Shop" <输出目录>
+pip install openpyxl Pillow
+export PYTHONPATH="$HOME/.artifact-preview-pylibs"   # 插图需要 Pillow
+export TEMU_OUT_DIR="/Users/<你>/Desktop/临时/2026销量表"  # 产物输出目录
+export TEMU_TPL="/Users/<你>/Desktop/临时/2026销量表/2026每日销量模板（空白）.xlsx"
+```
 
-# 年度每日销量台账（自动扫描该年全部月份数据）
-PYTHONPATH="$HOME/.artifact-preview-pylibs" python3 scripts/build_annual_workbook.py \
-    --store golf --data-dir data --out-dir <输出目录>
+**1. 浏览器拉取原始数据**（需要登录 Temu 商家中心）
 
-# 产品主图下载
+打开 `https://agentseller.temu.com/stock/fully-mgt/sale-manage/main`，确认店铺/排序（近30天销量降序、分SKU展示）后，注入 `scripts/inject.js` 循环提取：
+
+- 列表：`__extractPage()` → `__clickPageNum(n+1)` 翻页，**整页近30天销量全为 0 立即停止**（不拉滞销/停售品）
+- 逐日：每个有销量 SKC 打开趋势弹窗，`__ensureSplit()` 后 `__extractDaily()` 一次提取 31 天（无需鼠标悬浮）
+- 主图：`__extractPageImages()` 取 URL 并替换为 800×800
+
+落盘到数据目录：`data/<store>/raw_<YYYYMM>.json`、`daily_<YYYYMM>.json`、`imgs/<store>_<skcId>.jpg`
+
+**2. 生成分SKU销量汇总表**
+
+```bash
+python3 scripts/build_temu_xlsx.py data/golf/raw_202609.json "Golf Sports Factory Shop"
+# 近7天版本加 --metric d7，文件名自动变为「分SKU近7天销量降序」
+```
+
+**3. 下载产品主图**（如第 1 步未下载）
+
+```bash
 python3 scripts/download_images.py --urls <skc_urls.json> --out data/golf/imgs --store golf
 ```
+
+**4. 生成年度每日销量台账**
+
+```bash
+python3 scripts/build_annual_workbook.py --store golf --year 2026 \
+    --template "$TEMU_TPL" --out-dir "$TEMU_OUT_DIR" [--data-dir <数据目录>]
+```
+
+自动扫描该年全部月份数据，每月一个工作表（`2026-01` … `2026-12`）存入同一 xlsx；有数据月份填数+插图，无数据月份为空白表。**总结行公式自动预填**（日销量/周销量/周平均/月总销量），随数据联动重算，后续月份填数后无需再手动补公式。
+
+### 输出产物
+
+| 产物 | 文件名 | 内容 |
+|---|---|---|
+| 汇总表 | `<店名> 分SKU近30天(近7天)销量降序.xlsx` | 分SKU明细 + SKC汇总，降序 |
+| 年度台账 | `<店名> 每日销量<年>.xlsx` | 月度工作表 + 产品图 + SKC编号 + 总结行公式 |
 
 ## 已封装的坑（重要）
 
