@@ -162,6 +162,34 @@
     for (var s in best) if (best[s].url) out[s] = best[s].url;
     return out;
   };
+  // ---------- 排序指标切换（高级排序筛选） ----------
+  // metric: "今日销量" | "近7天销量" | "近30天销量" | "累计销量"
+  // 用法：先 __setSortMetric("近7天销量")，等待列表刷新后再 __extractPage()
+  window.__setSortMetric = function (metric) {
+    var candidates = ["今日销量", "近7天销量", "近30天销量", "累计销量"];
+    if (candidates.indexOf(metric) < 0) return { ok: false, msg: "bad metric: " + metric };
+    var all = document.querySelectorAll("div, span, button");
+    var trigger = null;
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      var t = (el.textContent || "").trim();
+      // 触发器：文本恰为某个排序项（当前选中值），元素本身轻量（无深层子节点）
+      if (t && candidates.indexOf(t) >= 0 && el.children.length <= 2) {
+        trigger = el;
+        break;
+      }
+    }
+    if (!trigger) return { ok: false, msg: "sort trigger not found" };
+    trigger.click();
+    // 展开后点击目标选项（文本完全匹配且不是触发器本身）
+    var opts = document.querySelectorAll("li, div, span, [class*=option], [class*=select], [class*=dropdown]");
+    for (var j = 0; j < opts.length; j++) {
+      var o = opts[j];
+      if (o === trigger) continue;
+      if ((o.textContent || "").trim() === metric) { o.click(); return { ok: true, metric: metric }; }
+    }
+    return { ok: false, msg: "option not found: " + metric };
+  };
   // ---------- 整页数据归档 ----------
   window.__allRecords = window.__allRecords || [];
   window.__dailyAll = window.__dailyAll || {};

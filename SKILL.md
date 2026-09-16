@@ -7,13 +7,14 @@ description: "从 Temu 商家中心（agentseller.temu.com）自动化拉取两�
 
 ## 概览
 
-浏览器驱动 Temu 商家中心「销售管理」页（`https://agentseller.temu.com/stock/fully-mgt/sale-manage/main`），按近30天销量降序、分SKU展示，逐页提取 SKC/SKU 销量；对每个有销量 SKC 打开销售趋势弹窗，从图表组件 React fiber 状态一次性提取 31 天逐日销量（**无需鼠标悬浮**）；同时提取 SKC 产品主图（去缩略图参数换 800×800 高清）。最终生成：
-- `<店名> 分SKU近30天销量降序.xlsx`（分SKU明细 + SKC汇总）
+浏览器驱动 Temu 商家中心「销售管理」页（`https://agentseller.temu.com/stock/fully-mgt/sale-manage/main`），按**指定销量指标（默认近30天，可切近7天）**降序、分SKU展示，逐页提取 SKC/SKU 销量；对每个有销量 SKC 打开销售趋势弹窗，从图表组件 React fiber 状态一次性提取 31 天逐日销量（**无需鼠标悬浮**）；同时提取 SKC 产品主图（去缩略图参数换 800×800 高清）。最终生成：
+- `<店名> 分SKU近30天(或近7天)销量降序.xlsx`（分SKU明细 + SKC汇总）
 - `<店名> 每日销量<年>.xlsx`（年度台账，每月一个工作表，从空白模板生成）
 
 ## 关键约束（用户明确要求）
 
-1. **只拉有销量**：分页列表遇整页近30天销量全为 0 立即停止，不拉余下滞销/停售品
+1. **只拉有销量**：分页列表遇整页指定指标（近30天或近7天）销量全为 0 立即停止，不拉余下滞销/停售品
+2. **排序指标可选**：默认近30天销量降序；需要近7天时先 `__setSortMetric("近7天销量")`，切换后列表刷新再提取；生成汇总表时传 `--metric d7`
 2. **文件名带店名**：两店 Golf Sports Factory Shop / Towel Manufacturer
 3. **月度表放同一 xls 的工作表**，不新建 xls；从模板「2026每日销量模板（空白）.xlsx」生成，无数据字段留空，保留表头+末尾总结行（日销量/周销量/周平均/月总销量）
 4. **产品主图**填 B:C 列（表头「sku/产品图」），SKC 编号在商品名称单元格**置顶显示**（`SKC: <编号>\n<商品名>`，wrap_text）
@@ -37,7 +38,7 @@ export PYTHONPATH="$HOME/.artifact-preview-pylibs"   # openpyxl 插图需 Pillow
 
 ### 2. 浏览器提取列表（分页，遇0停）
 
-1. 打开销售管理页，确认店铺名与目标一致（顶部显示），确认排序=近30天销量降序、分SKU展示
+1. 打开销售管理页，确认店铺名与目标一致（顶部显示）；确认排序=目标指标（近30天或近7天）销量降序、分SKU展示；需要切换指标时用 `__setSortMetric("近7天销量")`（或"近30天销量"/"今日销量"/"累计销量"），等待列表刷新后校验 `__curPage()` 再继续
 2. 用 `bu.js()` 注入 `scripts/inject.js`（页面刷新/会话过期后注入函数全部丢失，必须重新注入）
 3. 循环：`__extractPage()` 提取当前页 → `__clickPageNum(n+1)` 翻页 → 校验 `__curPage()` 后再提取 → **当前页所有 SKC 的近30天销量全为 0 时停止**
 4. 落盘 `data/<store>/raw_<YYYYMM>.json`（schema 见 references/extraction-logic.md）
@@ -46,7 +47,8 @@ export PYTHONPATH="$HOME/.artifact-preview-pylibs"   # openpyxl 插图需 Pillow
 
 ```bash
 export TEMU_OUT_DIR="<你的输出目录>"   # 产物输出目录（也可每次传 --out-dir）
-python3 scripts/build_temu_xlsx.py data/<store>/raw_<YYYYMM>.json "<店名>"
+python3 scripts/build_temu_xlsx.py data/<store>/raw_<YYYYMM>.json "<店名>" [--metric d7|d30]
+# 默认 d30（近30天）；近7天表加 --metric d7，文件名自动变「分SKU近7天销量降序」
 ```
 
 ### 4. 逐日销量提取（每个有销量 SKC）
@@ -79,7 +81,7 @@ python3 scripts/build_annual_workbook.py --store golf|towel \
 
 | 脚本 | 用途 |
 |---|---|
-| `scripts/build_temu_xlsx.py` | raw JSON → 分SKU近30天销量降序汇总表 |
+| `scripts/build_temu_xlsx.py` | raw JSON → 分SKU销量降序汇总表（`--metric d7|d30` 选近7天/近30天，默认近30天） |
 | `scripts/build_annual_workbook.py` | raw+daily+imgs → 年度每日销量台账（月份工作表，自动插图） |
 | `scripts/download_images.py` | SKC 图片 URL JSON → 高清图批量下载 |
 | `scripts/inject.js` | 浏览器注入函数库（页面提取/翻页/趋势/逐日/图片） |

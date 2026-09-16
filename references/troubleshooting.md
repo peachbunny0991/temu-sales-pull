@@ -14,6 +14,8 @@
 | `__extractDaily()` 无数组 | 未勾选「分SKU展示」/ 弹窗未开 | 先 `__ensureSplit()`；确认 `.rox-charts-for-react` 存在 |
 | 逐日之和 ≠ 近30天销量 | 数据窗口边界（当天未结束）| 核对 `isPredict` 字段；日期窗口以弹窗为准 |
 | 翻页后提取重复/缺页 | 翻页竞态 | 翻页后校验 `__curPage()` 再提取 |
+| `__setSortMetric()` 返回 not found | 排序下拉 DOM 结构变了 | 用 bu.js 打印排序区域元素结构（含文本/类名）后按真实类名调整注入函数 |
+| 切换排序后提取到旧数据 | 列表未刷新完成即提取 | 切换后 `bu.wait_for_load()`，校验 `__curPage()`/首行 SKC 变化后再提取 |
 | 合成事件无法触发 tooltip | 图表只响应真实鼠标 | **不要走 tooltip 路线**，直接用 fiber 提取（见 extraction-logic.md） |
 
 ## 生成阶段

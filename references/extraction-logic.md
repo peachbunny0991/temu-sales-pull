@@ -3,7 +3,8 @@
 ## 页面与入口
 
 - 销售管理（全球）：`https://agentseller.temu.com/stock/fully-mgt/sale-manage/main`
-- 进入路径：销售管理 → 高级排序筛选 → 排序方式=近30天销量、降序 → 销售趋势 → 分SKU展示
+- 进入路径：销售管理 → 高级排序筛选 → 排序方式=**近30天销量**（默认）或**近7天销量**、降序 → 销售趋势 → 分SKU展示
+- 排序指标切换：`__setSortMetric("近7天销量" | "近30天销量" | "今日销量" | "累计销量")`——点击排序下拉触发器再选目标项；切换后列表刷新，**等待刷新完成并校验 `__curPage()` 再提取**（该函数依赖实际下拉 DOM，首次在新页面使用若失败，用 bu.js 打印下拉区域结构后按真实类名调整）
 - 店铺显示名在页面顶部：Towel Manufacturer / Golf Sports Factory Shop（以页面实际为准）
 - 登录过期跳 `https://agentseller.temu.com/auth/authentication?...` → 立即请求用户接管登录
 
