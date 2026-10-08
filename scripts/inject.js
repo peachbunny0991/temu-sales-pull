@@ -190,6 +190,77 @@
     }
     return { ok: false, msg: "option not found: " + metric };
   };
+  // ---------- 分页（v2：类名带版本后缀，用属性包含选择器） ----------
+  // 2026-10 起类名形如 PGT_pagerItem_5-120-1，旧 .PGT_pagerItem 精确选择器失效
+  window.__curPage2 = function () {
+    var a = document.querySelector("[class*=PGT_pagerItemActive]");
+    return a ? parseInt(a.textContent, 10) : null;
+  };
+  window.__clickPageNum2 = function (n) {
+    var items = document.querySelectorAll("[class*=PGT_pagerItem]");
+    for (var i = 0; i < items.length; i++) {
+      var t = items[i].textContent.trim();
+      if (/^\d+$/.test(t) && parseInt(t, 10) === n) { items[i].click(); return true; }
+    }
+    var next = document.querySelector("[class*=PGT_next]");
+    if (next) { next.click(); return true; }
+    return false;
+  };
+  // ---------- 销售趋势点击（v2：只点 <a> 标签文本恰好"销售趋势"） ----------
+  // 旧 __clickTrend 用 button/span/a 模糊匹配会命中弹窗内干扰元素；
+  // 翻页后当前页只有 10 个 a 标签，索引用 idx % 10
+  window.__clickTrend2 = function (i) {
+    var links = document.querySelectorAll("a");
+    var cnt = 0;
+    for (var j = 0; j < links.length; j++) {
+      if ((links[j].textContent || "").trim() === "销售趋势") {
+        if (cnt === i) { links[j].click(); return cnt; }
+        cnt++;
+      }
+    }
+    return -1;
+  };
+  // ---------- 逐日数据提取（v3：只查最后一个 modal） ----------
+  // 2026-10 起每次点"销售趋势"都新开一个 modal 层叠，Escape 关不掉；
+  // __extractDaily 从 document 全局找会命中旧弹窗数据。v3 只查最后一个 modal，
+  // 并沿 fiber return 链向上 20 层找含 {date, salesNumber} 的最长数组。
+  window.__extractDaily3 = function () {
+    var modals = document.querySelectorAll("[class*=MDL_modal]");
+    if (!modals.length) return { ok: false, msg: "no modal" };
+    var modal = modals[modals.length - 1];
+    var all = modal.querySelectorAll("*");
+    var best = null;
+    for (var i = 0; i < all.length; i++) {
+      var el = all[i];
+      var k = Object.keys(el).find(function (x) { return x.indexOf("__reactFiber$") === 0; });
+      if (!k) continue;
+      var f = el[k];
+      for (var up = 0; up < 20 && f; up++) {
+        var node = f.memoizedState;
+        var hd = 0;
+        while (node && hd < 40) {
+          var v = node.memoizedState;
+          if (Array.isArray(v) && v.length && v[0] && typeof v[0] === "object" && v[0].date && "salesNumber" in v[0]) {
+            if (!best || v.length > best.length) best = v;
+          }
+          node = node.next; hd++;
+        }
+        f = f.return;
+      }
+    }
+    if (!best) return { ok: false, msg: "no array" };
+    return { ok: true, arr: best, len: best.length };
+  };
+  // ---------- 关闭弹窗（v2：点 MDL_iconWrapper，旧 [class*=close] 失效） ----------
+  // 2026-10 弹窗关闭按钮类名为 MDL_iconWrapper_5-120-1；遍历所有 modal 从最上层点
+  window.__closeAllModals = function () {
+    var modals = document.querySelectorAll("[class*=MDL_modal]");
+    for (var i = modals.length - 1; i >= 0; i--) {
+      var icon = modals[i].querySelector("[class*=MDL_iconWrapper]");
+      if (icon) { icon.click(); break; }
+    }
+    return modals.length;
+  };
   // ---------- 整页数据归档 ----------
   window.__allRecords = window.__allRecords || [];
   window.__dailyAll = window.__dailyAll || {};
