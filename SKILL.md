@@ -38,9 +38,10 @@ export PYTHONPATH="$HOME/.artifact-preview-pylibs"   # openpyxl 插图需 Pillow
 
 ### 2. 浏览器提取列表（分页，遇0停）
 
-1. 打开销售管理页，确认店铺名与目标一致（顶部显示）；确认排序=目标指标（近30天或近7天）销量降序、分SKU展示；需要切换指标时用 `__setSortMetric("近7天销量")`（或"近30天销量"/"今日销量"/"累计销量"），等待列表刷新后校验 `__curPage()` 再继续
+1. 打开销售管理页，确认店铺名与目标一致（顶部显示）；确认排序=目标指标（近30天或近7天）销量降序、分SKU展示；需要切换指标时用 `__setSortMetric("近7天销量")`（或"近30天销量"/"今日销量"/"累计销量"），等待列表刷新后校验 `__curPage2()` 再继续
 2. 用 `bu.js()` 注入 `scripts/inject.js`（页面刷新/会话过期后注入函数全部丢失，必须重新注入）
-3. 循环：`__extractPage()` 提取当前页 → `__clickPageNum(n+1)` 翻页 → 校验 `__curPage()` 后再提取 → **当前页所有 SKC 的近30天销量全为 0 时停止**
+3. 循环：`__extractPage()` 提取当前页 → `__clickPageNum2(n+1)` 翻页 → 校验 `__curPage2()` 后再提取 → **当前页所有 SKC 的近30天销量全为 0 时停止**
+   - **必须用 v2 函数**（`__clickPageNum2`/`__curPage2`）：2026-10 起分页器类名带版本后缀（`PGT_pagerItem_5-120-1`），旧的 `.PGT_pagerItem` 精确选择器已失效
 4. 落盘 `data/<store>/raw_<YYYYMM>.json`（schema 见 references/extraction-logic.md）
 
 ### 3. 生成汇总表
@@ -53,9 +54,14 @@ python3 scripts/build_temu_xlsx.py data/<store>/raw_<YYYYMM>.json "<店名>" [--
 
 ### 4. 逐日销量提取（每个有销量 SKC）
 
-1. 对 raw 中每个 `d30>0` 的 SKC：`__clickTrend(i)` 打开销售趋势弹窗 → `__ensureSplit()` 勾选「分SKU展示」→ `__extractDaily()` 从 `.rox-charts-for-react` 的 fiber 状态提取逐日数组（31天×SKU数）
-2. **校验**：每个 SKU 逐日之和 = 列表页近30天销量（不一致报警）
-3. 落盘 `data/<store>/daily_<YYYYMM>.json`
+1. 对 raw 中每个 `d30>0` 的 SKC：
+   - `__clickTrend2(i % 10)` 打开销售趋势弹窗（**翻页后当前页只有 10 个 a 标签，索引用 `idx % 10`**，不要用全局 idx）
+   - `__ensureSplit()` 勾选「分SKU展示」
+   - `__extractDaily3()` 提取逐日数组（**只查最后一个 modal**，从最后一个弹窗 DOM 沿 fiber return 链向上 20 层找含 `{date, salesNumber}` 的最长数组）
+   - `__closeAllModals()` 关闭弹窗（点 `MDL_iconWrapper`）
+2. **分批提取**：每批 6-8 个 SKC，避免弹窗层叠导致超时；每批之间落盘一次
+3. **校验**：每个 SKU 逐日之和 ≈ 列表页近30天销量（允许 ±5 误差，滚动窗口错位所致）
+4. 落盘 `data/<store>/daily_<YYYYMM>.json`
 
 ### 5. 产品主图下载
 
@@ -93,4 +99,10 @@ python3 scripts/build_annual_workbook.py --store golf|towel \
 - **QuickLook 渲染 xlsx 不可信**（出幽灵内容），验证以 zip 内部结构 + openpyxl 文本为准
 - **openpyxl delete_rows 不平移合并/行高**：build_annual_workbook.py 已处理（手动清理 row_dimensions + 重建 merged_cells），勿改回
 - 逐日数据**不在** ECharts option 里（option 只有汇总序列），在图表组件 fiber 的 hooks 状态中，见 references/extraction-logic.md
+- **2026-10 页面结构变更（必须用 v2/v3 函数）**：
+  - 分页器类名带版本后缀：`PGT_pagerItem_5-120-1`，旧 `.PGT_pagerItem` 选择器失效 → 用 `[class*=PGT_pagerItem]`（`__clickPageNum2`/`__curPage2`）
+  - 弹窗关闭按钮是 `MDL_iconWrapper_5-120-1`，旧 `.rox-modal-close`/`[class*=close]` 点不动 → 用 `__closeAllModals()`
+  - 每次点"销售趋势"都新开一个 modal 层叠，Escape 关不掉 → `__extractDaily3` 只查最后一个 modal，不要用 `__extractDaily`
+  - 翻页后当前页只有 10 个"销售趋势" a 标签 → `__clickTrend2(i % 10)`，不要用全局 idx
+  - 批量提取需分批（每批 6-8 个 SKC），避免弹窗层叠导致 tool 超时
 - 详见 references/troubleshooting.md
