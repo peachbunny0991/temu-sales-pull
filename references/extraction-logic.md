@@ -33,9 +33,10 @@ p.record && Array.isArray(p.record.skuQuantityDetailList) && p.record.productSkc
 
 ## 分页
 
-- 页码元素：`.PGT_pagerItem`（含 `.PGT_pagerItemActive` 当前页），上一页/下一页 `.PGT_prev / .PGT_next`
-- 翻页后**必须**校验 `__curPage()` 为新页再提取（防竞态）
+- 页码元素：**2026-10 起类名带版本后缀**（如 `PGT_pagerItem_5-120-1`、`PGT_pagerItemActive_5-120-1`），必须用属性包含选择器 `[class*=PGT_pagerItem]` / `[class*=PGT_pagerItemActive]`；上一页/下一页 `[class*=PGT_prev]` / `[class*=PGT_next]`
+- 翻页后**必须**校验 `__curPage2()` 为新页再提取（防竞态）
 - 停止条件：当前页所有 SKC 的 `d30` 全为 0 → 不再翻页（余下是滞销/停售品）
+- **翻页后 a 标签索引重置**：当前页只有 10 个"销售趋势" `<a>`，跨页全局索引失效，必须用 `i % 10`（`__clickTrend2(i % 10)`）
 
 ## 逐日销量提取（关键突破）
 
@@ -45,11 +46,13 @@ p.record && Array.isArray(p.record.skuQuantityDetailList) && p.record.productSkc
 ```js
 {date:"YYYY-MM-DD", prodSkuId:"90000000001", salesNumber:9, isPredict:false, soldOut:false}
 ```
-`__extractDaily()` 沿 `memoizedState` hook 链收集所有「数组元素含 date + salesNumber」的数组，取最长者。
+`__extractDaily3()`（2026-10 新版）只查最后一个 `[class*=MDL_modal]` DOM，沿 fiber return 链向上 20 层收集所有「数组元素含 date + salesNumber」的数组，取最长者。旧 `__extractDaily` 从 document 全局找会命中层叠的旧弹窗数据。
 
 **前置**：必须先勾选弹窗内「分SKU展示」复选框（`__ensureSplit()`），否则该数组不出现。
 
-**校验**：每个 SKU 逐日之和 = 列表页该 SKU 近30天销量；每日各 SKU 之和 = 图表汇总序列当日值。
+**校验**：每个 SKU 逐日之和 ≈ 列表页该 SKU 近30天销量（允许 ±5 误差，滚动窗口错位所致）；每日各 SKU 之和 = 图表汇总序列当日值。
+
+**弹窗关闭（2026-10 变更）**：关闭按钮类名 `MDL_iconWrapper_5-120-1`（不是旧的 `[class*=close]`），用 `__closeAllModals()` 从最上层 modal 逐个点。每次点"销售趋势"都新开一个 modal 层叠，Escape 无效，必须手动关。
 
 ## 产品主图
 
