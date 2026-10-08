@@ -13,10 +13,15 @@
 | `__extractPage()` 返回空 | 未在销售管理列表页 / fiber 结构变更 | 确认页面路径与排序筛选；打印 `document.querySelectorAll("*")` 首个 fiber 抽查 |
 | `__extractDaily()` 无数组 | 未勾选「分SKU展示」/ 弹窗未开 | 先 `__ensureSplit()`；确认 `.rox-charts-for-react` 存在 |
 | 逐日之和 ≠ 近30天销量 | 数据窗口边界（当天未结束）| 核对 `isPredict` 字段；日期窗口以弹窗为准 |
-| 翻页后提取重复/缺页 | 翻页竞态 | 翻页后校验 `__curPage()` 再提取 |
+| 翻页后提取重复/缺页 | 翻页竞态 | 翻页后校验 `__curPage2()` 再提取 |
 | `__setSortMetric()` 返回 not found | 排序下拉 DOM 结构变了 | 用 bu.js 打印排序区域元素结构（含文本/类名）后按真实类名调整注入函数 |
-| 切换排序后提取到旧数据 | 列表未刷新完成即提取 | 切换后 `bu.wait_for_load()`，校验 `__curPage()`/首行 SKC 变化后再提取 |
+| 切换排序后提取到旧数据 | 列表未刷新完成即提取 | 切换后 `bu.wait_for_load()`，校验 `__curPage2()`/首行 SKC 变化后再提取 |
 | 合成事件无法触发 tooltip | 图表只响应真实鼠标 | **不要走 tooltip 路线**，直接用 fiber 提取（见 extraction-logic.md） |
+| **翻页点不动 / 页码找不到**（2026-10 起） | 分页器类名带版本后缀（`PGT_pagerItem_5-120-1`），旧 `.PGT_pagerItem` 精确选择器失效 | 用 `__clickPageNum2(n)` / `__curPage2()`（属性包含选择器 `[class*=PGT_pagerItem]`） |
+| **弹窗关不掉 / 越开越多**（2026-10 起） | 关闭按钮类名改为 `MDL_iconWrapper_5-120-1`，旧 `[class*=close]` 找不到；每次点"销售趋势"都新开 modal 层叠，Escape 无效 | 用 `__closeAllModals()`（点 `MDL_iconWrapper`）；每提取完一个 SKC 立即关 |
+| **逐日数据取到旧弹窗 / 张冠李戴**（2026-10 起） | `__extractDaily` 从 document 全局找图表，会命中之前没关掉的旧弹窗 | 用 `__extractDaily3()`：只查最后一个 `[class*=MDL_modal]` DOM，沿 fiber return 链向上 20 层找含 `{date, salesNumber}` 的最长数组 |
+| **翻页后点错 SKC**（2026-10 起） | 当前页只有 10 个"销售趋势" `<a>`，全局 idx 跨页失效 | 用 `__clickTrend2(i % 10)`：只点文本恰好"销售趋势"的 a 标签，索引按当前页 0-9 |
+| **批量提取 tool 超时** | 弹窗层叠导致 DOM 过大 / 单次 cell 跑 30+ SKC | 每批 6-8 个 SKC，每批之间 `__closeAllModals()` + 落盘一次 |
 
 ## 生成阶段
 
