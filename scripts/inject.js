@@ -249,7 +249,17 @@
       }
     }
     if (!best) return { ok: false, msg: "no array" };
-    return { ok: true, arr: best, len: best.length };
+    // 分离真实值与预测值：isPredict=true 的条目是未来日期的离线预测，不应写入台账
+    var real = best.filter(function (x) { return !x.isPredict; });
+    var predictDates = best.filter(function (x) { return x.isPredict; }).map(function (x) { return x.date; });
+    return {
+      ok: true,
+      arr: best,               // 原始数组（诊断用）
+      real: real,              // 仅真实值（下游写入/校验用）
+      len: best.length,
+      predictCount: best.length - real.length,
+      predictDates: predictDates
+    };
   };
   // ---------- 关闭弹窗（v2：点 MDL_iconWrapper，旧 [class*=close] 失效） ----------
   // 2026-10 弹窗关闭按钮类名为 MDL_iconWrapper_5-120-1；遍历所有 modal 从最上层点
@@ -271,6 +281,32 @@
   };
   window.__getPageSkcs = function () {
     return window.__extractPage().map(function (r) { return r.skcId; });
+  };
+  // ---------- flow-grow 全店日销量提取（核对用） ----------
+  // 页面：https://agentseller.temu.com/main/flow-grow
+  // 「近期店铺销量走势」图表 = 全店逐日销量，30 天窗口，元素 {date:"YYYY-MM-DD", num:N}
+  window.__extractFlowGrow = function () {
+    var chart = document.querySelector(".rox-charts-for-react");
+    if (!chart) return { ok: false, msg: "no chart" };
+    var k = Object.keys(chart).find(function (x) { return x.indexOf("__reactFiber$") === 0; });
+    if (!k) return { ok: false, msg: "no fiber" };
+    var f = chart[k];
+    // 向上 15 层找含 {date, num} 的 30 项数组
+    var cur = f;
+    for (var up = 0; up < 15 && cur; up++) {
+      var node = cur.memoizedState;
+      var hIdx = 0;
+      while (node && hIdx < 30) {
+        var v = node.memoizedState;
+        if (Array.isArray(v) && v.length > 10 && v[0] && v[0].date && "num" in v[0]) {
+          return { ok: true, data: v, len: v.length };
+        }
+        node = node.next;
+        hIdx++;
+      }
+      cur = cur.return;
+    }
+    return { ok: false, msg: "no date-num array found" };
   };
   return "injected";
 })();

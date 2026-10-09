@@ -58,10 +58,12 @@ python3 scripts/build_temu_xlsx.py data/<store>/raw_<YYYYMM>.json "<店名>" [--
    - `__clickTrend2(i % 10)` 打开销售趋势弹窗（**翻页后当前页只有 10 个 a 标签，索引用 `idx % 10`**，不要用全局 idx）
    - `__ensureSplit()` 勾选「分SKU展示」
    - `__extractDaily3()` 提取逐日数组（**只查最后一个 modal**，从最后一个弹窗 DOM 沿 fiber return 链向上 20 层找含 `{date, salesNumber}` 的最长数组）
+     - **返回结构**：`{arr: 原始数组, real: 仅真实值, predictCount: 预测条数, predictDates: 预测日期列表}`
+     - **写入台账/校验一律用 `real`**，不要用 `arr`（`arr` 含 `isPredict=true` 的未来预测值，会污染日销量台账）
    - `__closeAllModals()` 关闭弹窗（点 `MDL_iconWrapper`）
 2. **分批提取**：每批 6-8 个 SKC，避免弹窗层叠导致超时；每批之间落盘一次
-3. **校验**：每个 SKU 逐日之和 ≈ 列表页近30天销量（允许 ±5 误差，滚动窗口错位所致）
-4. 落盘 `data/<store>/daily_<YYYYMM>.json`
+3. **校验**：每个 SKU 逐日之和（`real` 数组）≈ 列表页近30天销量（允许 ±5 误差，滚动窗口错位所致）；若 `predictCount > 0`，打印提示
+4. 落盘 `data/<store>/daily_<YYYYMM>.json`（含原始 `arr`，保留 `isPredict` 字段便于追溯；`build_annual_workbook.py` 重建时会自动过滤预测值）
 
 ### 5. 产品主图下载
 
@@ -78,7 +80,24 @@ python3 scripts/build_annual_workbook.py --store golf|towel \
 脚本自动扫描 `data/<store>/` 下该年全部月份数据，从模板重建年度工作簿：有数据月份填数+插图，无数据月份为空白模板表；月份 sheet 命名 `YYYY-MM`，统计月份 G2 自动设置。
 **总结行公式自动预填**：每个月份 sheet（含无数据空白月）的总结行会自动写入联动公式——日销量=每列 `=SUM(该列数据行)`、周销量=每 5 天一组 `=SUM`（1-5/6-10/11-15/16-20/21-25/26-30/31）、周平均=每 8 天一组 `=IFERROR(AVERAGE(...),"")`、月总销量=`=SUM(L:AP)`，随数据自动重算；无数据组显示空白（`IFERROR` 兜底）。
 
-### 7. 校验与交付
+### 7. flow-grow 全店日销量核对
+
+每次拉取完成后，自动从 flow-grow 页面提取全店逐日销量作为基准，和台账对比：
+
+1. 导航到 `https://agentseller.temu.com/main/flow-grow`
+2. 等待「近期店铺销量走势」图表加载完成
+3. 注入 `scripts/inject.js`（含 `__extractFlowGrow()`）
+4. 调用 `__extractFlowGrow()` 提取 30 天全店日销量（`{date, num}` 数组）
+5. 落盘 `data/<store>/flowgrow_<YYYYMMDD>.json`
+6. 跑核对脚本：
+   ```bash
+   python3 scripts/reconcile_flowgrow.py "<年度台账.xlsx>" "data/<store>/flowgrow_<YYYYMMDD>.json"
+   ```
+7. 查看差异：
+   - 差异 ≤2 件：正常滚动窗口错位，无需处理
+   - 差异 >5 件：检查是否漏拉/多拉 SKU，或 isPredict 未过滤
+
+### 8. 校验与交付
 
 - 汇总表：SKU 数、SKC 数、降序正确
 - 年度台账：zip 内 `xl/media/` 图片数 = 有销量 SKC 数；各月份 sheet 总结行在；9 月版应 rows=75
